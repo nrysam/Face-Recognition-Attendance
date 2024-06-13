@@ -7,7 +7,7 @@ This project implements a face recognition attendance system using OpenCV, Face 
 - [Requirements](https://github.com/nrysam/Face-Recognition-Attendance/blob/main/README.md#Requirements)
 - [Installation](https://github.com/nrysam/Face-Recognition-Attendance/blob/main/README.md#Installation)
 - [Usage](https://github.com/nrysam/Face-Recognition-Attendance/blob/main/README.md#Usages)
-- [File Descriptions](https://github.com/nrysam/Face-Recognition-Attendance/blob/main/README.md#File_Description)
+- [File Descriptions](https://github.com/nrysam/Face-Recognition-Attendance/blob/main/README.md#File-Description)
 - [Acknowledgments](https://github.com/nrysam/Face-Recognition-Attendance/blob/main/README.md#Acknowledgements)
 
 ## Introduction
