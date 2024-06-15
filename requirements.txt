@@ -1,8 +1,8 @@
 opencv-python-headless
+cmake
+dlib
 face_recognition
 numpy
 firebase-admin
 cvzone
 streamlit
-dlib
-cmake
