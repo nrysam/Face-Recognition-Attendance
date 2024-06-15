@@ -8,9 +8,16 @@ import cvzone
 import firebase_admin
 from firebase_admin import credentials, db, storage
 from datetime import datetime
+import json
+
+# Load the service account key from Streamlit secrets
+service_account_info = st.secrets["firebase"]["serviceAccountKey"]
+
+# Parse the string back to JSON
+service_account_info = json.loads(service_account_info)
 
 # Initialize Firebase
-cred = credentials.Certificate("serviceAccountKey.json")
+cred = credentials.Certificate(service_account_info)
 firebase_admin.initialize_app(cred, {
     'databaseURL': "https://facialattendancerecognition-default-rtdb.asia-southeast1.firebasedatabase.app/",
     'storageBucket': "facialattendancerecognition.appspot.com"
