@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 
 # Load the service account key from Streamlit secrets
-service_account_info = st.secrets["firebase"]["serviceAccountKey"]
+service_account_info = st.secrets["gcp_service_account"]
 
 # Parse the string back to JSON
 service_account_info = json.loads(service_account_info)
