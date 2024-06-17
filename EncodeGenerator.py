@@ -15,7 +15,7 @@ firebase_admin.initialize_app(cred,{
 
 
 # Import people faces
-folderPath = 'Images'
+folderPath = 'images'
 pathList = os.listdir(folderPath)
 print(pathList)
 

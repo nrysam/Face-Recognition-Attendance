@@ -14,7 +14,7 @@ data = {
         {  
             "name" : "Ana de Armas",
             "department" : "Sales",
-            "starting_year" : 2023,
+            "year_joined" : 2023,
             "total_attendance" : 20,
             "last_attendance_time" : "2023-12-10 07:44:22"
         },
@@ -22,23 +22,15 @@ data = {
         {  
             "name" : "Elon Musk",
             "department" : "Engineer",
-            "starting_year" : 2022,
+            "year_joined" : 2022,
             "total_attendance" : 140,
             "last_attendance_time" : "2024-04-22 06:44:22"
-        },
-    "171816":
-        {  
-            "name" : "Henry Samuel",
-            "department" : "AI and Data",
-            "starting_year" : 2024,
-            "total_attendance" : 49,
-            "last_attendance_time" : "2024-05-31 08:44:22"
         },
     "198765":
         {  
             "name" : "Rihanna",
             "department" : "Marketing",
-            "starting_year" : 2022,
+            "year_joined" : 2022,
             "total_attendance" : 80,
             "last_attendance_time" : "2024-02-10 12:44:22"
         },
@@ -46,7 +38,7 @@ data = {
         {  
             "name" : "David Beckham",
             "department" : "People Development",
-            "starting_year" : 2023,
+            "year_joined" : 2023,
             "total_attendance" : 75,
             "last_attendance_time" : "2024-04-24 07:44:22"
         }

@@ -17,11 +17,11 @@ firebase_admin.initialize_app(cred, {
 ref = db.reference('Employees')
 bucket = storage.bucket()
 
-def create_database_entry(employee_id, name, department, starting_year):
+def create_database_entry(employee_id, name, department, year_joined):
     data = {
         "name": name,
         "department": department,
-        "starting_year": starting_year,
+        "year_joined": year_joined,
         "total_attendance": 0,
         "last_attendance_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
@@ -36,8 +36,11 @@ def capture_face(employee_id):
         success, img = cap.read()
         cv2.imshow('Face Registration', img)
         if cv2.waitKey(1) & 0xFF == ord('s'):
-            resized_img = cv2.resize(img, (233, 233))
-            file_name = f'Images/{employee_id}.jpg'
+            # Allow user to crop the face manually
+            r = cv2.selectROI('Face Registration', img, fromCenter=False)
+            cropped_img = img[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            resized_img = cv2.resize(cropped_img, (233, 233))
+            file_name = f'images/{employee_id}.jpg'
             cv2.imwrite(file_name, resized_img)
             break
     cap.release()
@@ -48,22 +51,11 @@ def upload_to_storage(file_name):
     blob = bucket.blob(file_name)
     blob.upload_from_filename(file_name)
 
-def encode_faces():
-    folderPath = 'Images'
-    pathList = os.listdir(folderPath)
-    imgList = []
-    Ids = []
-    for path in pathList:
-        imgList.append(cv2.imread(os.path.join(folderPath, path)))
-        Ids.append(os.path.splitext(path)[0])
-    
-    encodeList = []
-    for img in imgList:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        encode = face_recognition.face_encodings(img)[0]
-        encodeList.append(encode)
-    
-    encodeListKnownWithIds = [encodeList, Ids]
+def encode_face(file_name, employee_id):
+    img = cv2.imread(file_name)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    encode = face_recognition.face_encodings(img)[0]
+    encodeListKnownWithIds = [[encode], [employee_id]]
     with open("EncodeFile2.p", 'wb') as file:
         pickle.dump(encodeListKnownWithIds, file)
 
@@ -71,12 +63,12 @@ def main():
     employee_id = input("Enter Employee ID: ")
     name = input("Enter Name: ")
     department = input("Enter Department: ")
-    starting_year = int(input("Enter Starting Year: "))
+    year_joined = int(input("Enter Year Joined: "))
     
-    create_database_entry(employee_id, name, department, starting_year)
+    create_database_entry(employee_id, name, department, year_joined)
     file_name = capture_face(employee_id)
     upload_to_storage(file_name)
-    encode_faces()
+    encode_face(file_name, employee_id)
     print("Registration Complete")
 
 if __name__ == "__main__":

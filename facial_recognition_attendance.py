@@ -8,7 +8,7 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
 from firebase_admin import storage
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Initialize Firebase
 cred = credentials.Certificate("serviceAccountKey.json")
@@ -110,6 +110,7 @@ while True:
                 if counter == 0 :
                     counter = 1 
                     modeType = 1
+        
         if counter != 0:
 
             if counter == 1 :
@@ -118,26 +119,40 @@ while True:
                 print(employee_info)
 
                 # Get the Employee Images from the storage
-                blob = bucket.get_blob(f'Images/{employee_id}.jpg')
-                array = np.frombuffer(blob.download_as_string(), np.uint8)
-                imgEmployee = cv2.imdecode(array, cv2.COLOR_BGRA2BGR)
+                blob = bucket.get_blob(f'images/{employee_id}.jpg')
+                if blob:
+                    array = np.frombuffer(blob.download_as_string(), np.uint8)
+                    imgEmployee = cv2.imdecode(array, cv2.COLOR_BGRA2BGR)
+                else:
+                    print(f"Error: Image for {employee_id} not found in storage")
+                    imgEmployee = np.zeros((233, 233, 3), dtype=np.uint8)  # Placeholder image
+
 
                 # Update attendance data
-                datetimeObject = datetime.strptime(employee_info['last_attendance_time'],
-                                                "%Y-%m-%d %H:%M:%S")
+                last_attendance_time = datetime.strptime(employee_info['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
+                current_time = datetime.now()
+                last_attendance_date = last_attendance_time.date()
+                current_date = current_time.date()
                 
-                secondsElapsed = (datetime.now()-datetimeObject).total_seconds()
-                print(secondsElapsed)
-
-                if secondsElapsed > 60 :
+                # Check if clock-in or clock-out
+                if last_attendance_date < current_date:
+                    # Clock-in
                     ref = db.reference(f'Employees/{employee_id}')
-                    employee_info['total_attendance'] +=1
-                    ref.child('total_attendance').set(employee_info['total_attendance'])
-                    ref.child('last_attendance_time').set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                else :
-                    modeType = 3
-                    counter = 0
-                    imgBackground[33:33+696, 740:740+504] = imgModeList[modeType]
+                    ref.child('last_attendance_time').set(current_time.strftime("%Y-%m-%d %H:%M:%S"))
+                    ref.child('attendance').child(current_date.strftime("%Y-%m-%d")).set({'clock_in': current_time.strftime("%H:%M:%S")})
+                else:
+                    # Clock-out
+                    elapsed_hours = (current_time - last_attendance_time).total_seconds() / 3600
+                    if elapsed_hours >= 9:
+                        ref = db.reference(f'Employees/{employee_id}')
+                        ref.child('attendance').child(last_attendance_date.strftime("%Y-%m-%d")).update({'clock_out': current_time.strftime("%H:%M:%S")})
+                        employee_info['total_attendance'] += 1
+                        ref.child('total_attendance').set(employee_info['total_attendance'])
+                        ref.child('last_attendance_time').set(current_time.strftime("%Y-%m-%d %H:%M:%S"))
+                    else:
+                        modeType = 3
+                        counter = 0
+                        imgBackground[33:33+696, 740:740+504] = imgModeList[modeType]
             
             if modeType !=3 :
                 if 10 < counter < 20:
@@ -157,7 +172,7 @@ while True:
                                 cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 2)
                     cv2.putText(imgBackground, str(employee_info['total_attendance']), (795, 703),
                                 cv2.FONT_HERSHEY_DUPLEX, 0.6, (0, 0, 0), 1)
-                    cv2.putText(imgBackground, str(employee_info['starting_year']), (1145, 703),
+                    cv2.putText(imgBackground, str(employee_info['year_joined']), (1145, 703),
                                 cv2.FONT_HERSHEY_DUPLEX, 0.6, (0, 0, 0), 1)
                 
                     imgBackground[171:171+233, 887:887+233] = imgEmployee
@@ -181,6 +196,6 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Release the capture and destroy all windows
+# Release the capture and destroy all windows  
 cap2.release()
 cv2.destroyAllWindows()
