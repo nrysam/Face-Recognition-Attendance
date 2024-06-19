@@ -62,7 +62,17 @@ Create the initial database with employee details by running:
 python DatabaseUpdate.py
 ```
 
-**2. Face Registration**
+
+**2. Generate Encodings**
+
+Generate face encodings for the faces in the initial database by running:
+
+```bat
+python EncodeGenerator.py
+```
+
+
+**3. Face Registration**
 
 Register new faces to the system by running:
 
@@ -73,13 +83,7 @@ python face_registration.py
 Follow the prompts to input employee details and capture their images.
 
 
-**3. Generate Encodings**
 
-Generate face encodings for the registered faces by running:
-
-```bat
-python EncodeGenerator.py
-```
 
 **4. Real-Time Attendance Tracking**
 
