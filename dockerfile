@@ -17,17 +17,16 @@ WORKDIR /app
 COPY requirements.txt /app/
 
 # Install any dependencies specified in requirements.txt
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the working directory contents into the container at /app
 COPY . /app
 
-# Make port 8501 available to the world outside this container
-EXPOSE 8501
+# Make port 5000 available to the world outside this container
+EXPOSE 5000
 
-# Define environment variable
-ENV NAME World
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
 
-# Run streamlit when the container launches
-CMD ["streamlit", "run", "app.py"]
+# Default command to run the Flask app
+CMD ["python", "app.py"]

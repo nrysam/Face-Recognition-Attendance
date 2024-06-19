@@ -5,4 +5,4 @@ face_recognition
 numpy
 firebase-admin
 cvzone
-streamlit
+Flask

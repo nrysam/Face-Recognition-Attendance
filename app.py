@@ -1,4 +1,4 @@
-import streamlit as st
+from flask import Flask, render_template, Response
 import cv2
 import os
 import face_recognition
@@ -6,142 +6,202 @@ import numpy as np
 import pickle
 import cvzone
 import firebase_admin
-from firebase_admin import credentials, db, storage
-from datetime import datetime
-import json
+from firebase_admin import credentials
+from firebase_admin import db
+from firebase_admin import storage
+from datetime import datetime, timedelta
 
-# Load the service account key from Streamlit secrets
-service_account_info = st.secrets["gcp_service_account"]
-
-# Parse the string back to JSON
-service_account_info = json.loads(service_account_info)
+app = Flask(__name__)
 
 # Initialize Firebase
-cred = credentials.Certificate(service_account_info)
+cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred, {
     'databaseURL': "https://facialattendancerecognition-default-rtdb.asia-southeast1.firebasedatabase.app/",
     'storageBucket': "facialattendancerecognition.appspot.com"
 })
 
-# Load Encodings
+# Get reference to the storage bucket
+bucket = storage.bucket()
+
 def load_encodings(file_path):
     with open(file_path, 'rb') as file:
         encodeListKnownWithIds = pickle.load(file)
     return encodeListKnownWithIds
 
+# Load the encoding files
+print("Loading Encode Files ...")
 encodeListKnownWithIds1 = load_encodings('EncodeFile.p')
 encodeListKnownWithIds2 = load_encodings('EncodeFile2.p')
-encodeListKnown = encodeListKnownWithIds1[0] + encodeListKnownWithIds2[0]
-Ids = encodeListKnownWithIds1[1] + encodeListKnownWithIds2[1]
 
-# Streamlit App
-st.title("Face Recognition Attendance System")
+# Unpack encoding lists and IDs
+encodeListKnown1, Ids1 = encodeListKnownWithIds1
+encodeListKnown2, Ids2 = encodeListKnownWithIds2
 
-# Sidebar for navigation
-st.sidebar.title("Navigation")
-option = st.sidebar.selectbox("Choose an option", ("Face Registration", "Face Recognition Attendance"))
+# Merge the encoding lists and IDs
+encodeListKnown = encodeListKnown1 + encodeListKnown2
+Ids = Ids1 + Ids2
 
-if option == "Face Registration":
-    st.header("Face Registration")
-    name = st.text_input("Name")
-    employee_id = st.text_input("Employee ID")
-    starting_year = st.number_input("Starting Year", min_value=1900, max_value=2100)
-    department = st.text_input("Department")
+print("Encode files Loaded!")
 
-    if st.button("Register and Capture"):
-        cap = cv2.VideoCapture(0)
-        cap.set(3, 233)
-        cap.set(4, 233)
+# Import the Background
+try:
+    imgBackground = cv2.imread('resources/background_image.png')
+    if imgBackground is None:
+        raise FileNotFoundError("Background image not found")
+except Exception as e:
+    print(f"Error loading background image: {e}")
+    imgBackground = np.zeros((720, 1280, 3), dtype=np.uint8)  # Fallback to a black background
 
-        st.write("Capturing image... Press 's' to save the image.")
+# Import the mode images into a list
+folderModePath = 'resources/modes'
+modePathList = os.listdir(folderModePath)
+imgModeList = []
 
-        while True:
-            success, img = cap.read()
-            if not success:
-                st.write("Failed to capture image.")
-                break
+for path in modePathList:
+    imgModeList.append(cv2.imread(os.path.join(folderModePath, path)))
 
-            cv2.imshow('Face Registration', img)
+# Resizing the mode images
+for i in range(len(imgModeList)):
+    imgModeList[i] = cv2.resize(imgModeList[i], (504, 687))
 
-            if cv2.waitKey(1) & 0xFF == ord('s'):
-                img_path = f'Images/{employee_id}.jpg'
-                cv2.imwrite(img_path, img)
-                st.write(f"Image saved as {img_path}")
-                break
+# Initialize variables for face recognition mode and counter
+modeType = 0
+counter = 0
 
-        cap.release()
-        cv2.destroyAllWindows()
+def generate_frames():
+    global imgBackground
+    cap2 = cv2.VideoCapture(1)
+    if cap2.isOpened():
+        print(f"Webcam with index 1 opened successfully")
+        cap2.set(3, 640)
+        cap2.set(4, 480)
+    else:
+        print(f"Webcam with index 1 failed to open")
+        cap2.release()
+        return
 
-        # Save to Firebase Storage
-        bucket = storage.bucket()
-        blob = bucket.blob(img_path)
-        blob.upload_from_filename(img_path)
-
-        # Update Firebase Database
-        ref = db.reference('Employees')
-        ref.child(employee_id).set({
-            "name": name,
-            "department": department,
-            "starting_year": starting_year,
-            "total_attendance": 0,
-            "last_attendance_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        st.write("Registration successful!")
-
-        # Encode the image
-        img = face_recognition.load_image_file(img_path)
-        img_encoding = face_recognition.face_encodings(img)[0]
-        with open("EncodeFile2.p", 'wb') as file:
-            encodeListKnownWithIds2[0].append(img_encoding)
-            encodeListKnownWithIds2[1].append(employee_id)
-            pickle.dump(encodeListKnownWithIds2, file)
-
-        st.write("Face encoding saved!")
-
-elif option == "Face Recognition Attendance":
-    st.header("Face Recognition Attendance")
-    cap = cv2.VideoCapture(0)
-    cap.set(3, 640)
-    cap.set(4, 480)
-
-    st.write("Running face recognition... Press 'q' to quit.")
+    global modeType, counter
 
     while True:
-        success, img = cap.read()
+        success, img = cap2.read()
+
         if not success:
-            st.write("Failed to capture image.")
+            print("Error: Could not read frame")
             break
 
-        img_small = cv2.resize(img, (0, 0), fx=0.25, fy=0.25)
-        img_small = cv2.cvtColor(img_small, cv2.COLOR_BGR2RGB)
+        try:
+            img_small = cv2.resize(img, (0, 0), fx=0.25, fy=0.25)
+            img_small = cv2.cvtColor(img_small, cv2.COLOR_BGR2RGB)
+        except cv2.error as e:
+            print(f"Error resizing or converting image: {e}")
+            continue
 
         face_current_frame = face_recognition.face_locations(img_small)
         encode_current_frame = face_recognition.face_encodings(img_small, face_current_frame)
 
-        for encodeFace, faceLoc in zip(encode_current_frame, face_current_frame):
-            matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
-            face_distance = face_recognition.face_distance(encodeListKnown, encodeFace)
-            matchIndex = np.argmin(face_distance)
+        try:
+            imgBackground[180:180+480, 46:46+640] = img
+            imgBackground[33:33+696, 740:740+504] = imgModeList[modeType]
+        except Exception as e:
+            print(f"Error placing image: {e}")
+            continue
 
-            if matches[matchIndex]:
-                employee_id = Ids[matchIndex]
-                employee_info = db.reference(f'Employees/{employee_id}').get()
+        if face_current_frame:
+            for encodeFace, faceLoc in zip(encode_current_frame, face_current_frame):
+                matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
+                face_distance = face_recognition.face_distance(encodeListKnown, encodeFace)
 
-                datetimeObject = datetime.strptime(employee_info['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
-                secondsElapsed = (datetime.now() - datetimeObject).total_seconds()
+                matchIndex = np.argmin(face_distance)
 
-                if secondsElapsed > 60:
-                    ref = db.reference(f'Employees/{employee_id}')
-                    employee_info['total_attendance'] += 1
-                    ref.child('total_attendance').set(employee_info['total_attendance'])
-                    ref.child('last_attendance_time').set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                if matches[matchIndex]:
+                    y1, x2, y2, x1 = [val * 4 for val in faceLoc]
+                    bbox = 46 + x1, 180 + y1, x2 - x1, y2 - y1
+                    imgBackground = cvzone.cornerRect(imgBackground, bbox, rt=0)
+                    employee_id = Ids[matchIndex]
 
-                st.write(f"Welcome {employee_info['name']} from {employee_info['department']}!")
+                    if counter == 0:
+                        counter = 1
+                        modeType = 1
 
-        cv2.imshow("Face Recognition Attendance", img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            if counter != 0:
+                if counter == 1:
+                    employee_info = db.reference(f'Employees/{employee_id}').get()
+                    print(employee_info)
 
-    cap.release()
-    cv2.destroyAllWindows()
+                    blob = bucket.get_blob(f'images/{employee_id}.jpg')
+                    array = np.frombuffer(blob.download_as_string(), np.uint8)
+                    imgEmployee = cv2.imdecode(array, cv2.COLOR_BGRA2BGR)
+
+                    last_attendance_time = datetime.strptime(employee_info['last_attendance_time'], "%Y-%m-%d %H:%M:%S")
+                    current_time = datetime.now()
+                    last_attendance_date = last_attendance_time.date()
+                    current_date = current_time.date()
+
+                    if last_attendance_date < current_date:
+                        ref = db.reference(f'Employees/{employee_id}')
+                        ref.child('last_attendance_time').set(current_time.strftime("%Y-%m-%d %H:%M:%S"))
+                        ref.child('attendance').child(current_date.strftime("%Y-%m-%d")).set({'clock_in': current_time.strftime("%H:%M:%S")})
+                    else:
+                        elapsed_hours = (current_time - last_attendance_time).total_seconds() / 3600
+                        if elapsed_hours >= 9:
+                            ref = db.reference(f'Employees/{employee_id}')
+                            ref.child('attendance').child(last_attendance_date.strftime("%Y-%m-%d")).update({'clock_out': current_time.strftime("%H:%M:%S")})
+                            employee_info['total_attendance'] += 1
+                            ref.child('total_attendance').set(employee_info['total_attendance'])
+                            ref.child('last_attendance_time').set(current_time.strftime("%Y-%m-%d %H:%M:%S"))
+                        else:
+                            modeType = 3
+                            counter = 0
+                            imgBackground[33:33+696, 740:740+504] = imgModeList[modeType]
+
+                if modeType != 3:
+                    if 10 < counter < 20:
+                        modeType = 2
+
+                        imgBackground[33:33+696, 740:740+504] = imgModeList[modeType]
+
+                    if counter <= 10:
+                        (w, h), _ = cv2.getTextSize(employee_info['name'], cv2.FONT_HERSHEY_DUPLEX, 1, 1)
+                        offset = (504-w)//2
+                        cv2.putText(imgBackground, str(employee_info['name']), (750+offset, 470),
+                                    cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 0), 2)
+                        cv2.putText(imgBackground, str(employee_id), (1000, 528),
+                                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(imgBackground, str(employee_info['department']), (1000, 592),
+                                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(imgBackground, str(employee_info['total_attendance']), (795, 703),
+                                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (0, 0, 0), 1)
+                        cv2.putText(imgBackground, str(employee_info['year_joined']), (1145, 703),
+                                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (0, 0, 0), 1)
+
+                        imgBackground[171:171+233, 887:887+233] = imgEmployee
+                    counter += 1
+
+                    if counter >= 20:
+                        counter = 0
+                        modeType = 0
+                        employee_info = []
+                        imgEmployee = []
+                        imgBackground[33:33+696, 740:740+504] = imgModeList[modeType]
+
+        else:
+            modeType = 0
+            counter = 0
+
+        ret, buffer = cv2.imencode('.jpg', imgBackground)
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    cap2.release()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+    app.run(debug=True)
